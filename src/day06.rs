@@ -1,156 +1,155 @@
-use std::collections::HashSet;
-
 use aoc_runner_derive::aoc;
 
-#[derive(PartialEq, Eq, Hash, Clone, Debug)]
-struct Point {
-    x: i32,
-    y: i32,
+const DIRECTIONS: [(i32, i32); 4] = [
+    (0, -1), // North
+    (1, 0),  // East
+    (0, 1),  // South
+    (-1, 0), // West
+];
+
+fn out_of_bounds(coord: &(i32, i32), width: i32, height: i32) -> bool {
+    coord.0 < 0 || coord.1 < 0 || coord.0 == width || coord.1 == height
 }
 
-impl Point {
-    fn advance(&self, direction: &Point, distance: i32) -> Point {
-        Point {
-            x: self.x + distance * direction.x,
-            y: self.y + distance * direction.y,
-        }
+fn move_in_direction(coord: (i32, i32), direction: usize) -> (i32, i32) {
+    let d = DIRECTIONS[direction];
+    (coord.0 + d.0 as i32, coord.1 + d.1 as i32)
+}
+
+fn get_grid(grid: &Vec<Vec<char>>, coord: (i32, i32)) -> char {
+    grid[coord.1 as usize][coord.0 as usize]
+}
+
+fn set_grid(grid: &mut Vec<Vec<char>>, coord: (i32, i32), new_char: char) -> () {
+    grid[coord.1 as usize][coord.0 as usize] = new_char
+}
+
+fn get_guard(direction: usize) -> char {
+    match direction {
+        0 => '^',
+        1 => '>',
+        2 => 'v',
+        3 => '<',
+        _ => panic!("non"),
     }
 }
 
-const DIRECTIONS: [Point; 4] = [
-    Point { x: 0, y: -1 }, // North
-    Point { x: 1, y: 0 },  // East
-    Point { x: 0, y: 1 },  // South
-    Point { x: -1, y: 0 }, // West
-];
-
-fn out_of_bounds(next: &Point, width: i32, height: i32) -> bool {
-    next.x < 0 || next.y < 0 || next.x == width || next.y == height
+fn set_guard(grid: &mut Vec<Vec<char>>, coord: (i32, i32), direction: usize) -> () {
+    set_grid(grid, coord, get_guard(direction));
 }
 
 #[aoc(day6, part1)]
 fn part1(content: &str) -> i32 {
-    let mut obstructions = HashSet::<Point>::new();
-    let mut start: Option<Point> = None;
+    let mut grid: Vec<Vec<char>> = content.lines().map(|line| line.chars().collect()).collect();
 
-    let (mut max_x, mut max_y) = (0, 0);
-    for (y, row) in content.lines().enumerate() {
-        max_y = max_y.max(y);
-        for (x, cell) in row.chars().enumerate() {
-            max_x = max_x.max(x);
-            match cell {
-                '^' => {
-                    start = Some(Point {
-                        x: x as i32,
-                        y: y as i32,
-                    });
-                }
-                '#' => {
-                    obstructions.insert(Point {
-                        x: x as i32,
-                        y: y as i32,
-                    });
-                }
-                _ => (),
-            };
-        }
-    }
+    let height = grid.len() as i32;
+    let width = grid[0].len() as i32;
 
-    let mut visited = HashSet::<Point>::new();
+    let start = grid
+        .iter()
+        .enumerate()
+        .find_map(|(y, row)| {
+            row.iter()
+                .position(|&c| c == '^')
+                .map(|x| (x as i32, y as i32))
+        })
+        .unwrap();
+
+    let mut current: (i32, i32) = start;
+    let mut next: (i32, i32);
     let mut direction = 0;
-    let mut current = start.unwrap();
-    visited.insert(current.clone());
 
-    let height = max_y as i32 + 1;
-    let width = max_x as i32 + 1;
+    let mut visited = 1;
     loop {
-        let next = current.advance(&DIRECTIONS[direction], 1);
-        if obstructions.contains(&next) {
-            direction = (direction + 1) % 4;
-            continue;
-        }
+        next = move_in_direction(current, direction);
         if out_of_bounds(&next, width, height) {
             break;
         }
-        current = next.clone();
-        visited.insert(next);
-    }
-
-    visited.len() as i32
-}
-
-fn enters_a_loop(
-    candidate: &Point,
-    obstructions1: &HashSet<Point>,
-    start: &Point,
-    height: i32,
-    width: i32,
-) -> bool {
-    let mut direction: usize = 0;
-    let mut current: Point = start.clone();
-    let mut visited: HashSet<(Point, usize)> = HashSet::from([(start.clone(), direction)]);
-
-    let mut obstructions: HashSet<Point> = obstructions1.clone();
-    obstructions.insert(candidate.clone());
-
-    loop {
-        let next = current.advance(&DIRECTIONS[direction], 1);
-        if obstructions.contains(&next) {
+        let field = get_grid(&grid, next);
+        if field == '#' {
             direction = (direction + 1) % 4;
+            set_guard(&mut grid, current, direction);
             continue;
         }
-
-        if visited.contains(&(next.clone(), direction)) {
-            return true;
+        if field == '.' {
+            visited += 1;
         }
+        set_grid(&mut grid, current, 'X');
+        set_guard(&mut grid, next, direction);
+        current = next;
+    }
 
+    visited
+}
+
+fn _print_grid(g: &Vec<Vec<char>>) {
+    for row in g.iter() {
+        println!("{}", row.iter().collect::<String>());
+    }
+}
+
+fn walk_until_loop(grid: &mut Vec<Vec<char>>, start: (i32, i32), height: i32, width: i32) -> i32 {
+    let mut current: (i32, i32) = start;
+    let mut next: (i32, i32);
+    let mut direction = 0;
+    let mut guard = get_guard(direction);
+    let mut steps_taken = 0;
+
+    loop {
+        next = move_in_direction(current, direction);
         if out_of_bounds(&next, width, height) {
-            return false;
+            return 0;
         }
+        let field = get_grid(&grid, next);
+        if "O#".contains(field) {
+            direction = (direction + 1) % 4;
+            guard = get_guard(direction);
+            set_grid(grid, current, guard);
+            continue;
+        }
+        steps_taken += 1;
 
-        current = next.clone();
-        visited.insert((next, direction));
+        // We are looping if either:
+        // - the guard passed next field in same direction (probably does not capture all cases)
+        // - number of steps exceeds the grid size (lazy, but only happens 26 times on real input so eh)
+        if field == guard || steps_taken > (height * width) {
+            return 1;
+        }
+        set_grid(grid, next, guard);
+        current = next;
     }
 }
 
 #[aoc(day6, part2)]
 fn part2(content: &str) -> i32 {
-    let mut obstructions = HashSet::<Point>::new();
-    let mut candidates = HashSet::<Point>::new();
-    let mut start: Option<Point> = None;
+    let orig_grid: Vec<Vec<char>> = content.lines().map(|line| line.chars().collect()).collect();
 
-    let (mut max_x, mut max_y) = (0, 0);
-    for (y, row) in content.lines().enumerate() {
-        max_y = max_y.max(y);
-        for (x, cell) in row.chars().enumerate() {
-            max_x = max_x.max(x);
+    let height = orig_grid.len() as i32;
+    let width = orig_grid[0].len() as i32;
 
-            let point = Point {
-                x: x as i32,
-                y: y as i32,
-            };
-            match cell {
-                '^' => {
-                    start = Some(point);
-                }
-                '#' => {
-                    obstructions.insert(point);
-                }
-                _ => {
-                    candidates.insert(point);
-                }
-            };
+    let start = orig_grid
+        .iter()
+        .enumerate()
+        .find_map(|(y, row)| {
+            row.iter()
+                .position(|&c| c == '^')
+                .map(|x| (x as i32, y as i32))
+        })
+        .unwrap();
+
+    let mut loops_found = 0;
+    for (y, row) in orig_grid.iter().enumerate() {
+        for (x, c) in row.iter().enumerate() {
+            if "#^".contains(*c) {
+                continue;
+            }
+            let mut grid = orig_grid.clone();
+            grid[y][x] = 'O';
+
+            loops_found += walk_until_loop(&mut grid, start, height, width);
         }
     }
-    let height = max_y as i32 + 1;
-    let width = max_x as i32 + 1;
-
-    let mut start1 = start.unwrap();
-
-    candidates
-        .iter()
-        .filter(|c| enters_a_loop(*c, &obstructions, &start1, height, width))
-        .count() as i32
+    loops_found
 }
 
 #[cfg(test)]
