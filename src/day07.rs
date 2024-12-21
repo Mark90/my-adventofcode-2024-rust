@@ -4,69 +4,15 @@ use aoc_runner_derive::aoc;
 
 use itertools::{repeat_n, Itertools};
 
-fn check_equation(line: &str) -> i64 {
-    // TODO's
-    //  document/rename stuff
-    //  try small optimization by sorting equations by length so as to reuse all_ops for multiple equations
-    let (total, numbers) = line
-        .split_once(':')
-        .map(|(x, y)| {
-            (
-                x.parse::<i64>().unwrap(),
-                y.split_whitespace()
-                    .map(|s| s.parse::<i64>().unwrap())
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .unwrap();
+const MULTIPLY: u8 = '*' as u8;
+const ADD: u8 = '+' as u8;
+const COMBINE: u8 = '|' as u8;
 
-    // let operators = ['+', '*'];
-    let operators = "+*"; // TODO bench this vs vec
-    let num_ops = numbers.len();
-    // let all_ops: Vec<String> = repeat_n(operators.iter().cloned(), num_ops)
-    let all_ops: Vec<String> = repeat_n(operators.chars(), num_ops)
-        .multi_cartesian_product()
-        .map(|v| v.into_iter().collect::<String>())
-        .collect();
+const OPERATORS_PART1: [u8; 2] = [MULTIPLY, ADD];
+const OPERATORS_PART2: [u8; 3] = [MULTIPLY, ADD, COMBINE];
 
-    for ops_chars in all_ops {
-        let ops = ops_chars.as_bytes();
-
-        let outcome = numbers
-            .iter()
-            .enumerate()
-            .fold(0i64, |acc, (idx, v)| match idx {
-                0 => acc + v,
-                i => match ops[i - 1] as char {
-                    '*' => acc * v,
-                    '+' => acc + v,
-                    _ => panic!("impossible"),
-                },
-            });
-
-        if outcome == total {
-            return outcome;
-        }
-    }
-    return 0;
-}
-
-#[aoc(day7, part1)]
-fn part1(content: &str) -> i64 {
-    // TODO rewrite to u64 and
-    content.lines().map(check_equation).sum()
-}
-
-fn number_length2(num: &u64) -> u32 {
-    num.ilog10() + 1
-}
-
-fn check_equation2(line: &str) -> u64 {
-    // TODO's
-    //  document/rename stuff
-    //  try small optimization by sorting equations by length so as to reuse all_ops for multiple equations
-    let (total, numbers) = line
-        .split_once(':')
+fn parse_equation(line: &str) -> (u64, Vec<u64>) {
+    line.split_once(':')
         .map(|(x, y)| {
             (
                 x.parse::<u64>().unwrap(),
@@ -75,124 +21,93 @@ fn check_equation2(line: &str) -> u64 {
                     .collect::<Vec<_>>(),
             )
         })
-        .unwrap();
+        .unwrap()
+}
 
-    // let operators = ['+', '*', '|'];
-    let operators = "+*|"; // TODO bench this vs vec
-    let num_ops = numbers.len();
-    // let all_ops: Vec<String> = repeat_n(operators.iter().cloned(), num_ops)
-    let all_ops: Vec<String> = repeat_n(operators.chars(), num_ops)
-        .multi_cartesian_product()
-        .map(|v| v.into_iter().collect::<String>())
-        .collect();
+fn parse_equations(content: &str) -> HashMap<usize, Vec<(u64, Vec<u64>)>> {
+    // Parse equations, grouping them by the amount of numbers
+    let mut equations = HashMap::<usize, Vec<(u64, Vec<u64>)>>::new();
+    for line in content.lines() {
+        let (total, numbers) = parse_equation(line);
 
-    for ops_chars in all_ops {
-        let ops = ops_chars.as_bytes();
+        equations
+            .entry(numbers.len())
+            .or_insert_with(Vec::new)
+            .push((total, numbers));
+    }
+    equations
+}
 
-        let outcome = numbers
+fn calibrate_equation(op_sequences: &Vec<Vec<&u8>>, total: &u64, numbers: &Vec<u64>) -> u64 {
+    // 'Calibrate' the given numbers by trying out all operator sequences until one matches the total
+    for op_sequence in op_sequences {
+        let result = numbers
             .iter()
             .enumerate()
-            .fold(0u64, |acc, (idx, v)| match idx {
-                0 => acc + v,
-                i => match ops[i - 1] as char {
-                    '*' => acc * v,
-                    '+' => acc + v,
-                    '|' => (acc * 10u64.pow(number_length2(&v))) + v,
-                    _ => panic!("impossible"),
+            .fold(0u64, |acc, (idx, number)| match idx {
+                0 => acc + number,
+                i => match op_sequence[i - 1] {
+                    &MULTIPLY => acc * number,
+                    &ADD => acc + number,
+                    &COMBINE => (acc * 10u64.pow(number_of_digits(&number))) + number,
+                    _ => panic!("impossible.. or is it? *tun tun tun*"),
                 },
             });
 
-        if outcome == total {
-            return outcome;
+        if &result == total {
+            return result;
         }
     }
 
     return 0;
 }
 
-//
+fn check_equations_part1(num_ops: usize, equations: Vec<(u64, Vec<u64>)>) -> u64 {
+    // Create all operator sequence permutations, i.e. +++, ++*, +**, etc
+    let op_sequences: Vec<Vec<&u8>> = repeat_n(OPERATORS_PART1.iter(), num_ops)
+        .multi_cartesian_product()
+        .collect();
 
-// fn check_equations3(num_ops: usize, equations: Vec<(u64, Vec<u64>)>) -> u64 {
-//     // TODO's
-//     //  document/rename stuff
-//     //  try small optimization by sorting equations by length so as to reuse all_ops for multiple equations
-//     // let (total, numbers) = line
-//     //     .split_once(':')
-//     //     .map(|(x, y)| {
-//     //         (
-//     //             x.parse::<u64>().unwrap(),
-//     //             y.split_whitespace()
-//     //                 .map(|s| s.parse::<u64>().unwrap())
-//     //                 .collect::<Vec<_>>(),
-//     //         )
-//     //     })
-//     //     .unwrap();
+    equations
+        .iter()
+        .map(|(total, numbers)| calibrate_equation(&op_sequences, total, numbers))
+        .sum()
+}
 
-//     // let operators = ['+', '*', '|'];
-//     let operators = "+*|"; // TODO bench this vs vec
-//                            // let num_ops = numbers.len();
-//                            // let all_ops: Vec<String> = repeat_n(operators.iter().cloned(), num_ops)
-//     let all_ops: Vec<&[u8]> = repeat_n(operators.chars(), num_ops)
-//         .multi_cartesian_product()
-//         .map(|v| v.into_iter().collect::<String>())
-//         .map(|s| s.as_bytes())
-//         .collect();
+#[aoc(day7, part1)]
+fn part1(content: &str) -> u64 {
+    let equations = parse_equations(content);
 
-//     for ops_chars in all_ops {
-//         // let ops = ops_chars.as_bytes();
-//         let ops = ops_chars;
+    equations
+        .into_iter()
+        .map(|(total, numbers)| check_equations_part1(total, numbers))
+        .sum()
+}
 
-//         let outcome = numbers
-//             .iter()
-//             .enumerate()
-//             .fold(0u64, |acc, (idx, v)| match idx {
-//                 0 => acc + v,
-//                 i => match ops[i - 1] as char {
-//                     '*' => acc * v,
-//                     '+' => acc + v,
-//                     '|' => (acc * 10u64.pow(number_length2(&v))) + v,
-//                     _ => panic!("impossible"),
-//                 },
-//             });
+fn number_of_digits(num: &u64) -> u32 {
+    num.ilog10() + 1
+}
 
-//         if outcome == total {
-//             return outcome;
-//         }
-//     }
+fn calibrate_part2(num_ops: usize, equations: Vec<(u64, Vec<u64>)>) -> u64 {
+    // Create all operator sequence permutations, i.e. +++, ++*, +|*, etc
+    let op_sequences: Vec<Vec<&u8>> = repeat_n(OPERATORS_PART2.iter(), num_ops)
+        .multi_cartesian_product()
+        .collect();
 
-//     return 0;
-// }
+    equations
+        .iter()
+        .map(|(total, numbers)| calibrate_equation(&op_sequences, total, numbers))
+        .sum()
+}
 
 #[aoc(day7, part2)]
 fn part2(content: &str) -> u64 {
-    // let mut equations_by_length = HashMap::<usize, Vec<(u64, Vec<u64>)>>::new();
+    let equations = parse_equations(content);
 
-    // for line in content.lines() {
-    //     let (total, numbers) = line
-    //         .split_once(':')
-    //         .map(|(x, y)| {
-    //             (
-    //                 x.parse::<u64>().unwrap(),
-    //                 y.split_whitespace()
-    //                     .map(|s| s.parse::<u64>().unwrap())
-    //                     .collect::<Vec<_>>(),
-    //             )
-    //         })
-    //         .unwrap();
-
-    //     equations_by_length
-    //         .entry(numbers.len())
-    //         .or_insert_with(Vec::new)
-    //         .push((total, numbers));
-    // }
-
-    // println!("MMM {:?}", equations_by_length);
-
-    // let grouped = content.lines().into_iter().map(|l| l.count);
-
-    content.lines().map(check_equation2).sum()
-
-    // equations_by_length.into_iter().map(check_equations3).sum()
+    equations
+        .into_iter()
+        .map(|(total, numbers)| calibrate_part2(total, numbers))
+        .sum()
 }
 
 #[cfg(test)]
@@ -221,13 +136,13 @@ mod tests {
 
     #[test]
     fn test_number_length() {
-        assert_eq!(number_length2(&1), 1);
-        assert_eq!(number_length2(&9), 1);
-        assert_eq!(number_length2(&10), 2);
-        assert_eq!(number_length2(&50), 2);
-        assert_eq!(number_length2(&99), 2);
-        assert_eq!(number_length2(&100), 3);
-        assert_eq!(number_length2(&999), 3);
-        assert_eq!(number_length2(&1000), 4);
+        assert_eq!(number_of_digits(&1), 1);
+        assert_eq!(number_of_digits(&9), 1);
+        assert_eq!(number_of_digits(&10), 2);
+        assert_eq!(number_of_digits(&50), 2);
+        assert_eq!(number_of_digits(&99), 2);
+        assert_eq!(number_of_digits(&100), 3);
+        assert_eq!(number_of_digits(&999), 3);
+        assert_eq!(number_of_digits(&1000), 4);
     }
 }
