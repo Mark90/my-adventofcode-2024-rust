@@ -1,4 +1,5 @@
 use aoc_runner_derive::aoc;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -54,16 +55,26 @@ fn part1(content: &str) -> i32 {
         .sum()
 }
 
-fn sort_update(lookup: &HashMap<i32, usize>, update: Vec<i32>) -> Vec<i32> {
-    let mut res = update.clone();
-    res.sort_by(|a, b| lookup.get(b).unwrap().cmp(lookup.get(a).unwrap()));
-    println!("from\n{:?}\nto\n{:?}\n", update, res);
-    res
+fn sort_update(rules: &HashMap<i32, HashSet<i32>>, update: &mut Vec<i32>) -> () {
+    update.sort_by(|a, b| {
+        if rules
+            .get(a)
+            .map_or(false, |next_pages| next_pages.contains(b))
+        {
+            Ordering::Greater
+        } else if rules
+            .get(b)
+            .map_or(false, |next_pages| next_pages.contains(a))
+        {
+            Ordering::Less
+        } else {
+            Ordering::Equal
+        }
+    });
 }
 
 #[aoc(day5, part2)]
 fn part2(content: &str) -> i32 {
-    // 4050 too low
     let mut parts = content.split("\n\n");
     let rules_ = parts.next().unwrap();
     let updates = parts.next().unwrap();
@@ -74,26 +85,14 @@ fn part2(content: &str) -> i32 {
         rules.entry(from).or_insert(HashSet::new()).insert(to);
     }
 
-    let mut lookup = HashMap::<i32, usize>::new();
-    for (k, v) in rules.iter() {
-        // TODO this doesn't work, length is not an indicator of position
-        let num_allowed = v.len();
-
-        lookup.insert(*k, num_allowed);
-        if num_allowed == 1 {
-            lookup.insert(*v.clone().iter().next().unwrap(), 0 as usize);
-        }
-    }
-
-    println!("RULES {:?}", rules);
-    println!("lookup {:?}", lookup);
-
     updates
         .lines()
         .map(to_update)
         .filter(|update| !is_valid_update(&rules, update))
-        .map(|update| sort_update(&lookup, update))
-        .map(|update| update[update.len() / 2])
+        .map(|mut update| {
+            sort_update(&rules, &mut update);
+            update[update.len() / 2]
+        })
         .sum()
 }
 
